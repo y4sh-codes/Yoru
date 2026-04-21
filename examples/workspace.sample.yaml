@@ -1,0 +1,33 @@
+id: 00000000-0000-0000-0000-000000000001
+name: Demo Workspace
+schema_version: "1.0.0"
+collections:
+  - id: 00000000-0000-0000-0000-000000000010
+    name: Demo Collection
+    description: Sample starter collection
+    requests:
+      - id: 00000000-0000-0000-0000-000000000011
+        name: Ping
+        method: GET
+        url: "https://httpbin.org/get?service={{service}}"
+        headers: []
+        query: []
+        body:
+          kind: none
+        auth:
+          kind: none
+        pre_request_script: null
+        test_script: "log(\"status=\" + vars[\"status\"]);"
+        tags:
+          - starter
+        timeout_ms: 10000
+environments:
+  - id: 00000000-0000-0000-0000-000000000020
+    name: local
+    variables:
+      - key: service
+        value: yoru
+        secret: false
+active_environment_id: 00000000-0000-0000-0000-000000000020
+history: []
+updated_at: 2026-04-21T00:00:00Z

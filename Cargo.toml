@@ -1,0 +1,29 @@
+[package]
+name = "yoru"
+version = "0.1.0"
+edition = "2024"
+description = "Yoru: a lightweight Postman-like API client for the terminal"
+license = "MIT"
+repository = "https://example.com/yoru"
+
+[dependencies]
+clap = { version = "4.5.39", features = ["derive", "env"] }
+color-eyre = "0.6.3"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+serde_yaml = "0.9.34"
+tokio = { version = "1.47.1", features = ["rt-multi-thread", "macros", "time"] }
+reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls", "http2", "gzip", "brotli", "deflate"] }
+ratatui = "0.29.0"
+crossterm = "0.28.1"
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+chrono = { version = "0.4.42", features = ["serde"] }
+directories = "5.0.1"
+thiserror = "2.0.16"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt", "ansi"] }
+regex = "1.11.3"
+rhai = "1.23.6"
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
