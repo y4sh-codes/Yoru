@@ -3,25 +3,31 @@
 //! Doctag:tui-rendering
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use crate::app::state::{AppState, InputMode, ResponseTab};
+use crate::app::state::{AppState, InputMode, ResponseTab, Screen};
 use crate::core::models::RequestBody;
 use crate::tui::theme::Theme;
 
-/// Draws complete UI frame.
+// ─── Entry point ─────────────────────────────────────────────────────────────
+
 pub fn draw(frame: &mut Frame<'_>, state: &AppState, theme: &Theme) {
     let area = frame.area();
+
+    if state.screen == Screen::Splash {
+        render_splash(frame, area, state, theme);
+        return;
+    }
 
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
             Constraint::Min(10),
-            Constraint::Length(3),
+            Constraint::Length(5),
         ])
         .split(area);
 
@@ -42,106 +48,318 @@ pub fn draw(frame: &mut Frame<'_>, state: &AppState, theme: &Theme) {
     }
 }
 
+// ─── Splash screen ───────────────────────────────────────────────────────────
+
+fn render_splash(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: &Theme) {
+    // Solid background
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::NONE)
+            .style(Style::default().bg(theme.background)),
+        area,
+    );
+
+    let vl = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(14),
+            Constraint::Length(6),  // logo art
+            Constraint::Length(2),  // subtitle
+            Constraint::Length(1),  // gap
+            Constraint::Length(9),  // info box
+            Constraint::Length(1),  // gap
+            Constraint::Length(1),  // hints
+            Constraint::Min(0),
+        ])
+        .split(area);
+
+    // ── Big YORU logo ──
+    let logo = vec![
+        Line::from(Span::styled(
+            "██╗   ██╗ ██████╗ ██████╗ ██╗   ██╗",
+            theme.title(),
+        )),
+        Line::from(Span::styled(
+            "╚██╗ ██╔╝██╔═══██╗██╔══██╗██║   ██║",
+            theme.title(),
+        )),
+        Line::from(Span::styled(
+            " ╚████╔╝ ██║   ██║██████╔╝██║   ██║",
+            theme.title(),
+        )),
+        Line::from(Span::styled(
+            "  ╚██╔╝  ██║   ██║██╔══██╗██║   ██║",
+            theme.title(),
+        )),
+        Line::from(Span::styled(
+            "   ██║    ╚██████╔╝██║  ██║╚██████╔╝",
+            theme.title(),
+        )),
+        Line::from(Span::styled(
+            "   ╚═╝     ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ",
+            Style::default()
+                .fg(theme.primary)
+                .add_modifier(Modifier::DIM),
+        )),
+    ];
+    frame.render_widget(
+        Paragraph::new(logo).alignment(Alignment::Center),
+        vl[1],
+    );
+
+    // Sub-title
+    let subtitle = Line::from(vec![
+        Span::styled("Terminal API Client  ·  ", theme.muted()),
+        Span::styled("Postman for the shell", Style::default().fg(theme.accent)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(subtitle).alignment(Alignment::Center),
+        vl[2],
+    );
+
+    // ── Info box ──
+    let active_env = state
+        .workspace
+        .active_environment()
+        .map(|e| e.name.clone())
+        .unwrap_or_else(|| "none".to_string());
+    let total_requests: usize = state.workspace.collections.iter().map(|c| c.requests.len()).sum();
+
+    let info = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Workspace    ", theme.muted()),
+            Span::styled(state.workspace.name.clone(), theme.body()),
+        ]),
+        Line::from(vec![
+            Span::styled("  Collections  ", theme.muted()),
+            Span::styled(
+                state.workspace.collections.len().to_string(),
+                theme.body(),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("  Requests     ", theme.muted()),
+            Span::styled(total_requests.to_string(), theme.body()),
+        ]),
+        Line::from(vec![
+            Span::styled("  Environment  ", theme.muted()),
+            Span::styled(active_env, theme.body()),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  [ Press Enter to Open Workspace ]",
+            Style::default()
+                .fg(theme.primary)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+
+    let hl = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Percentage(50),
+            Constraint::Percentage(25),
+        ])
+        .split(vl[4]);
+
+    frame.render_widget(
+        Paragraph::new(info).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.border))
+                .title(" Active Workspace ")
+                .title_style(theme.muted())
+                .style(Style::default().bg(theme.panel_bg)),
+        ),
+        hl[1],
+    );
+
+    // Hints
+    let hints = Line::from(vec![
+        Span::styled("Enter", theme.key_hint()),
+        Span::styled("  Open  ·  ", theme.muted()),
+        Span::styled("?", theme.key_hint()),
+        Span::styled("  Help  ·  ", theme.muted()),
+        Span::styled("q", theme.key_hint()),
+        Span::styled("  Quit", theme.muted()),
+    ]);
+    frame.render_widget(
+        Paragraph::new(hints).alignment(Alignment::Center),
+        vl[6],
+    );
+}
+
+// ─── Header bar ──────────────────────────────────────────────────────────────
+
 fn render_header(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: &Theme) {
     let active_env = state
         .workspace
         .active_environment()
-        .map(|env| env.name.clone())
+        .map(|e| e.name.clone())
         .unwrap_or_else(|| "none".to_string());
 
+    let total_requests: usize = state
+        .workspace
+        .collections
+        .iter()
+        .map(|c| c.requests.len())
+        .sum();
+
     let filter_label = if state.request_filter.trim().is_empty() {
-        "none".to_string()
+        String::new()
     } else {
-        state.request_filter.clone()
+        format!("  ⌕ {}", state.request_filter)
     };
 
     let title = Line::from(vec![
-        Span::styled("YORU", theme.title()),
         Span::styled(
-            format!("  Workspace: {}", state.workspace.name),
+            " YORU ",
+            Style::default()
+                .fg(theme.primary)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("│", Style::default().fg(theme.border)),
+        Span::styled(
+            format!("  {}  ", state.workspace.name),
             theme.body(),
         ),
-        Span::styled(format!("  |  Env: {active_env}"), theme.body()),
-        Span::styled(format!("  |  Filter: {filter_label}"), theme.muted()),
+        Span::styled("│", Style::default().fg(theme.border)),
+        Span::styled(
+            format!(
+                "  {} collection{}  ·  {} request{}  ",
+                state.workspace.collections.len(),
+                if state.workspace.collections.len() == 1 { "" } else { "s" },
+                total_requests,
+                if total_requests == 1 { "" } else { "s" },
+            ),
+            theme.muted(),
+        ),
+        Span::styled("│", Style::default().fg(theme.border)),
+        Span::styled(
+            format!("  env: {}  ", active_env),
+            Style::default().fg(theme.success),
+        ),
+        Span::styled(
+            filter_label,
+            Style::default()
+                .fg(theme.warning)
+                .add_modifier(Modifier::ITALIC),
+        ),
     ]);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Session ")
-        .style(Style::default().bg(theme.panel_bg));
-
-    let paragraph = Paragraph::new(title).block(block).style(theme.body());
-    frame.render_widget(paragraph, area);
+    frame.render_widget(
+        Paragraph::new(title).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.border))
+                .style(Style::default().bg(theme.panel_bg)),
+        ),
+        area,
+    );
 }
+
+// ─── Main area ───────────────────────────────────────────────────────────────
 
 fn render_main(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: &Theme) {
-    let columns = Layout::default()
+    let cols = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(34), Constraint::Percentage(66)])
+        .constraints([Constraint::Percentage(32), Constraint::Percentage(68)])
         .split(area);
 
-    render_navigator(frame, columns[0], state, theme);
-    render_inspector(frame, columns[1], state, theme);
+    render_navigator(frame, cols[0], state, theme);
+    render_inspector(frame, cols[1], state, theme);
 }
+
+// ─── Navigator (left panel) ──────────────────────────────────────────────────
 
 fn render_navigator(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: &Theme) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(32), Constraint::Percentage(68)])
+        .constraints([Constraint::Percentage(28), Constraint::Percentage(72)])
         .split(area);
 
-    let collection_items = state
+    // Collections
+    let col_items: Vec<ListItem> = state
         .workspace
         .collections
         .iter()
         .enumerate()
-        .map(|(idx, collection)| {
+        .map(|(idx, col)| {
+            let label = format!("  {}  ({})", col.name, col.requests.len());
             let style = if idx == state.selected_collection_idx {
                 theme.selected()
             } else {
                 theme.body()
             };
-            ListItem::new(collection.name.clone()).style(style)
+            ListItem::new(label).style(style)
         })
-        .collect::<Vec<_>>();
+        .collect();
 
-    let collections = List::new(collection_items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Collections ")
-            .style(Style::default().bg(theme.panel_bg)),
+    frame.render_widget(
+        List::new(col_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.border))
+                .title(" Collections ")
+                .title_style(theme.muted())
+                .style(Style::default().bg(theme.panel_bg)),
+        ),
+        sections[0],
     );
-    frame.render_widget(collections, sections[0]);
 
-    let filtered_indices = state.filtered_request_indices();
-    let request_items = state
+    // Requests with coloured method badges
+    let filtered = state.filtered_request_indices();
+    let req_items: Vec<ListItem> = state
         .selected_collection()
-        .map(|collection| {
-            filtered_indices
+        .map(|col| {
+            filtered
                 .iter()
                 .map(|idx| {
-                    let request = &collection.requests[*idx];
-                    let text = format!("{} {}", request.method, request.name);
-                    let style = if *idx == state.selected_request_idx {
-                        theme.selected()
+                    let req = &col.requests[*idx];
+                    let method = req.method.to_string();
+                    let badge_label = format!(" {:<7}", method);
+                    let name_label = format!(" {}", req.name);
+
+                    if *idx == state.selected_request_idx {
+                        ListItem::new(Line::from(vec![
+                            Span::styled(
+                                badge_label,
+                                Style::default()
+                                    .fg(theme.background)
+                                    .bg(theme.method_color(&method))
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(name_label, theme.selected()),
+                        ]))
                     } else {
-                        theme.body()
-                    };
-                    ListItem::new(text).style(style)
+                        ListItem::new(Line::from(vec![
+                            Span::styled(badge_label, theme.method_style(&method)),
+                            Span::styled(name_label, theme.body()),
+                        ]))
+                    }
                 })
-                .collect::<Vec<_>>()
+                .collect()
         })
         .unwrap_or_default();
 
-    let request_title = format!(" Requests ({}) ", request_items.len());
-    let requests = List::new(request_items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(request_title)
-            .style(Style::default().bg(theme.panel_bg)),
+    let req_title = format!(" Requests ({}) ", req_items.len());
+    frame.render_widget(
+        List::new(req_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.border))
+                .title(req_title)
+                .title_style(theme.muted())
+                .style(Style::default().bg(theme.panel_bg)),
+        ),
+        sections[1],
     );
-    frame.render_widget(requests, sections[1]);
 }
+
+// ─── Inspector (right panel) ─────────────────────────────────────────────────
 
 fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: &Theme) {
     let sections = Layout::default()
@@ -149,340 +367,538 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: 
         .constraints([Constraint::Length(13), Constraint::Min(8)])
         .split(area);
 
-    let request_text = if let Some(request) = state.selected_request() {
-        let body_label = match &request.body {
+    // Request details
+    let request_text = if let Some(req) = state.selected_request() {
+        let body_label = match &req.body {
             RequestBody::None => "none".to_string(),
             RequestBody::Raw { content, .. } => format!("raw ({} chars)", content.len()),
             RequestBody::Json { value } => format!("json ({} chars)", value.to_string().len()),
             RequestBody::FormUrlEncoded { fields } => format!("form ({} fields)", fields.len()),
         };
 
+        let scripts_label = match (
+            req.pre_request_script.is_some(),
+            req.test_script.is_some(),
+        ) {
+            (true, true)   => "pre + test",
+            (true, false)  => "pre",
+            (false, true)  => "test",
+            (false, false) => "none",
+        };
+
+        let tags_label = if req.tags.is_empty() {
+            "—".to_string()
+        } else {
+            req.tags.join(", ")
+        };
+
+        let method = req.method.to_string();
+
         vec![
             Line::from(vec![
-                Span::styled("Name: ", theme.muted()),
-                Span::styled(request.name.clone(), theme.body()),
-                Span::styled("    Method: ", theme.muted()),
-                Span::styled(request.method.to_string(), theme.body()),
+                Span::styled(" Name    ", theme.muted()),
+                Span::styled(req.name.clone(), theme.body()),
             ]),
             Line::from(vec![
-                Span::styled("URL: ", theme.muted()),
-                Span::styled(request.url.clone(), theme.body()),
+                Span::styled(" Method  ", theme.muted()),
+                Span::styled(method.clone(), theme.method_style(&method)),
+                Span::styled("   Auth    ", theme.muted()),
+                Span::styled(auth_label(req), theme.body()),
             ]),
             Line::from(vec![
-                Span::styled("Auth: ", theme.muted()),
-                Span::styled(auth_label(request), theme.body()),
-                Span::styled("    Body: ", theme.muted()),
+                Span::styled(" URL     ", theme.muted()),
+                Span::styled(req.url.clone(), theme.body()),
+            ]),
+            Line::from(vec![
+                Span::styled(" Headers ", theme.muted()),
+                Span::styled(req.headers.len().to_string(), theme.body()),
+                Span::styled("   Query   ", theme.muted()),
+                Span::styled(req.query.len().to_string(), theme.body()),
+                Span::styled("   Body    ", theme.muted()),
                 Span::styled(body_label, theme.body()),
             ]),
             Line::from(vec![
-                Span::styled("Headers: ", theme.muted()),
-                Span::styled(request.headers.len().to_string(), theme.body()),
-                Span::styled("    Query: ", theme.muted()),
-                Span::styled(request.query.len().to_string(), theme.body()),
-                Span::styled("    Timeout: ", theme.muted()),
+                Span::styled(" Timeout ", theme.muted()),
                 Span::styled(
-                    request
-                        .timeout_ms
-                        .map(|value| format!("{} ms", value))
+                    req.timeout_ms
+                        .map(|v| format!("{}ms", v))
                         .unwrap_or_else(|| "default".to_string()),
                     theme.body(),
                 ),
+                Span::styled("   Scripts ", theme.muted()),
+                Span::styled(scripts_label.to_string(), theme.body()),
+                Span::styled("   Tags    ", theme.muted()),
+                Span::styled(tags_label, theme.muted()),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(" Edit  ", theme.muted()),
+                Span::styled("i", theme.key_hint()),
+                Span::styled(" name  ", theme.muted()),
+                Span::styled("u", theme.key_hint()),
+                Span::styled(" url  ", theme.muted()),
+                Span::styled("m", theme.key_hint()),
+                Span::styled(" method  ", theme.muted()),
+                Span::styled("b", theme.key_hint()),
+                Span::styled(" body  ", theme.muted()),
+                Span::styled("h", theme.key_hint()),
+                Span::styled(" header  ", theme.muted()),
+                Span::styled("p", theme.key_hint()),
+                Span::styled(" query", theme.muted()),
             ]),
             Line::from(vec![
-                Span::styled("Editor: ", theme.muted()),
-                Span::styled("i name, u url, m method, h header, p query, b body, t bearer", theme.body()),
+                Span::styled(" Auth  ", theme.muted()),
+                Span::styled("t", theme.key_hint()),
+                Span::styled(" bearer  ", theme.muted()),
+                Span::styled("a", theme.key_hint()),
+                Span::styled(" basic  ", theme.muted()),
+                Span::styled("k", theme.key_hint()),
+                Span::styled(" api-key  ", theme.muted()),
+                Span::styled("T", theme.key_hint()),
+                Span::styled(" timeout", theme.muted()),
             ]),
         ]
     } else {
         vec![Line::from(Span::styled(
-            "No request selected",
+            " No request selected — press n to add one",
             theme.muted(),
         ))]
     };
 
-    let request_panel = Paragraph::new(request_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Request Editor ")
-                .style(Style::default().bg(theme.panel_bg)),
-        )
-        .wrap(Wrap { trim: true });
-    frame.render_widget(request_panel, sections[0]);
+    frame.render_widget(
+        Paragraph::new(request_text)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.border))
+                    .title(" Request Inspector ")
+                    .title_style(theme.muted())
+                    .style(Style::default().bg(theme.panel_bg)),
+            )
+            .wrap(Wrap { trim: true }),
+        sections[0],
+    );
 
-    let response_panel = Paragraph::new(response_lines(state, theme))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(response_title(state))
-                .style(Style::default().bg(theme.panel_bg)),
-        )
-        .wrap(Wrap { trim: false });
-    frame.render_widget(response_panel, sections[1]);
+    // Response panel
+    frame.render_widget(
+        Paragraph::new(response_lines(state, theme))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.border))
+                    .title(response_title(state))
+                    .title_style(theme.muted())
+                    .style(Style::default().bg(theme.panel_bg)),
+            )
+            .wrap(Wrap { trim: false })
+            .scroll((state.response_scroll, 0)),
+        sections[1],
+    );
 }
+
+// ─── Response helpers ─────────────────────────────────────────────────────────
 
 fn response_title(state: &AppState) -> String {
     let active = match state.response_tab {
-        ResponseTab::Body => "Body",
+        ResponseTab::Body    => "Body",
         ResponseTab::Headers => "Headers",
-        ResponseTab::Logs => "Logs",
+        ResponseTab::Logs    => "Logs",
         ResponseTab::History => "History",
     };
-
+    let scroll_hint = if state.response_scroll > 0 {
+        format!(" ↕{}", state.response_scroll)
+    } else {
+        String::new()
+    };
     format!(
-        " Response [{}]  Tabs: [1]Body [2]Headers [3]Logs [4]History [Tab]Next ",
-        active
+        " Response · [1]Body [2]Headers [3]Logs [4]History  active:{}{} ",
+        active, scroll_hint
     )
 }
 
 fn response_lines(state: &AppState, theme: &Theme) -> Vec<Line<'static>> {
     match state.response_tab {
-        ResponseTab::Body => render_response_body(state, theme),
+        ResponseTab::Body    => render_response_body(state, theme),
         ResponseTab::Headers => render_response_headers(state, theme),
-        ResponseTab::Logs => render_response_logs(state, theme),
+        ResponseTab::Logs    => render_response_logs(state, theme),
         ResponseTab::History => render_history(state, theme),
     }
 }
 
 fn render_response_body(state: &AppState, theme: &Theme) -> Vec<Line<'static>> {
-    let Some(response) = &state.last_response else {
-        return vec![Line::from(Span::styled(
-            "Run request with r/Enter to preview response body",
-            theme.muted(),
-        ))];
+    let Some(resp) = &state.last_response else {
+        return vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  No response yet.",
+                theme.muted(),
+            )),
+            Line::from(Span::styled(
+                "  Select a request and press  r  or  Enter  to run it.",
+                theme.muted(),
+            )),
+        ];
     };
+
+    let status_style = theme.status_style(resp.status);
 
     let mut lines = vec![
         Line::from(vec![
-            Span::styled("Status: ", theme.muted()),
+            Span::styled("  Status   ", theme.muted()),
             Span::styled(
-                format!("{} {}", response.status, response.status_text),
-                Style::default()
-                    .fg(theme.success)
-                    .add_modifier(Modifier::BOLD),
+                format!("{} {}", resp.status, resp.status_text),
+                status_style,
             ),
-            Span::styled("    Duration: ", theme.muted()),
-            Span::styled(format!("{} ms", response.duration_ms), theme.body()),
-            Span::styled("    Size: ", theme.muted()),
-            Span::styled(format!("{} bytes", response.size_bytes), theme.body()),
+            Span::styled("   Duration  ", theme.muted()),
+            Span::styled(format!("{} ms", resp.duration_ms), theme.body()),
+            Span::styled("   Size  ", theme.muted()),
+            Span::styled(format_size(resp.size_bytes), theme.body()),
         ]),
-        Line::from(""),
+        Line::from(
+            Span::styled(
+                "─".repeat(60),
+                Style::default().fg(theme.border),
+            ),
+        ),
     ];
 
-    let body_preview = response.body.lines().take(26).collect::<Vec<_>>().join("\n");
-    lines.push(Line::from(Span::styled(body_preview, theme.body())));
+    for line in resp.body.lines() {
+        lines.push(Line::from(Span::styled(line.to_string(), theme.body())));
+    }
+
     lines
 }
 
+fn format_size(bytes: usize) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.2} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
 fn render_response_headers(state: &AppState, theme: &Theme) -> Vec<Line<'static>> {
-    let Some(response) = &state.last_response else {
+    let Some(resp) = &state.last_response else {
         return vec![Line::from(Span::styled(
-            "No headers yet. Run a request first.",
+            "  No headers yet — run a request first.",
             theme.muted(),
         ))];
     };
 
-    if response.headers.is_empty() {
-        return vec![Line::from(Span::styled("No response headers", theme.muted()))];
+    if resp.headers.is_empty() {
+        return vec![Line::from(Span::styled("  No response headers.", theme.muted()))];
     }
 
-    response
-        .headers
-        .iter()
-        .take(40)
-        .map(|(name, value)| {
-            Line::from(vec![
-                Span::styled(format!("{}: ", name), theme.muted()),
-                Span::styled(value.clone(), theme.body()),
-            ])
-        })
-        .collect()
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled(
+                format!("  {} header{}", resp.headers.len(),
+                    if resp.headers.len() == 1 { "" } else { "s" }),
+                theme.muted(),
+            ),
+        ]),
+        Line::from(
+            Span::styled("─".repeat(60), Style::default().fg(theme.border)),
+        ),
+    ];
+
+    for (name, value) in resp.headers.iter().take(60) {
+        lines.push(Line::from(vec![
+            Span::styled(format!("  {}: ", name), theme.muted()),
+            Span::styled(value.clone(), theme.body()),
+        ]));
+    }
+
+    lines
 }
 
 fn render_response_logs(state: &AppState, theme: &Theme) -> Vec<Line<'static>> {
-    let Some(response) = &state.last_response else {
-        return vec![Line::from(Span::styled(
-            "No script logs yet.",
-            theme.muted(),
-        ))];
+    let Some(resp) = &state.last_response else {
+        return vec![Line::from(Span::styled("  No script logs yet.", theme.muted()))];
     };
 
-    if response.script_logs.is_empty() {
+    if resp.script_logs.is_empty() {
         return vec![Line::from(Span::styled(
-            "No logs emitted by scripts",
+            "  Scripts ran without emitting any log() calls.",
             theme.muted(),
         ))];
     }
 
-    response
-        .script_logs
+    resp.script_logs
         .iter()
-        .take(40)
-        .map(|line| Line::from(Span::styled(format!("- {}", line), theme.body())))
+        .map(|l| Line::from(Span::styled(format!("  › {}", l), theme.body())))
         .collect()
 }
 
 fn render_history(state: &AppState, theme: &Theme) -> Vec<Line<'static>> {
     if state.workspace.history.is_empty() {
         return vec![Line::from(Span::styled(
-            "No request history yet.",
+            "  No history yet — run some requests.",
             theme.muted(),
         ))];
     }
 
-    state
-        .workspace
-        .history
-        .iter()
-        .rev()
-        .take(32)
-        .map(|entry| {
-            Line::from(vec![
-                Span::styled(
-                    format!("{} {}", entry.method, entry.request_name),
-                    theme.body(),
-                ),
-                Span::styled("  |  ", theme.muted()),
-                Span::styled(format!("{}", entry.status), theme.body()),
-                Span::styled("  |  ", theme.muted()),
-                Span::styled(format!("{} ms", entry.latency_ms), theme.body()),
-                Span::styled("  |  ", theme.muted()),
-                Span::styled(entry.url.clone(), theme.muted()),
-            ])
-        })
-        .collect()
+    let mut lines = vec![
+        Line::from(Span::styled(
+            format!("  {} entries (newest first)", state.workspace.history.len()),
+            theme.muted(),
+        )),
+        Line::from(Span::styled(
+            "─".repeat(60),
+            Style::default().fg(theme.border),
+        )),
+    ];
+
+    for entry in state.workspace.history.iter().rev().take(60) {
+        let method = entry.method.to_string();
+        let status_style = theme.status_style(entry.status);
+        lines.push(Line::from(vec![
+            Span::styled(format!(" {:<7}", method), theme.method_style(&method)),
+            Span::styled(format!("{:<20}", entry.request_name), theme.body()),
+            Span::styled(
+                format!("  {}  ", entry.status),
+                status_style,
+            ),
+            Span::styled(format!("{} ms  ", entry.latency_ms), theme.muted()),
+            Span::styled(entry.url.clone(), theme.muted()),
+        ]));
+    }
+
+    lines
 }
 
+// ─── Footer ──────────────────────────────────────────────────────────────────
+
 fn render_footer(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: &Theme) {
-    let help = Line::from(vec![
-        Span::styled("Arrows", theme.muted()),
-        Span::styled(" nav  ", theme.body()),
-        Span::styled("r/Enter", theme.muted()),
-        Span::styled(" run  ", theme.body()),
-        Span::styled("n", theme.muted()),
-        Span::styled(" new  ", theme.body()),
-        Span::styled("d", theme.muted()),
-        Span::styled(" dup  ", theme.body()),
-        Span::styled("x", theme.muted()),
-        Span::styled(" del  ", theme.body()),
-        Span::styled("/", theme.muted()),
-        Span::styled(" filter  ", theme.body()),
-        Span::styled("?", theme.muted()),
-        Span::styled(" help", theme.body()),
+    let kh = theme.key_hint();
+    let sep = Style::default().fg(theme.border);
+
+    let nav_line = Line::from(vec![
+        Span::styled("↑↓←→", kh), Span::styled(" navigate  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" r", kh), Span::styled("/Enter", kh), Span::styled(" run  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" n", kh), Span::styled(" new req  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" N", kh), Span::styled(" new col  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" C", kh), Span::styled(" rename col  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" d", kh), Span::styled(" dup  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" x", kh), Span::styled(" del  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" /", kh), Span::styled(" filter  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" PgUp/Dn", kh), Span::styled(" scroll  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" ?", kh), Span::styled(" help  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" q", kh), Span::styled(" quit", theme.muted()),
     ]);
 
-    let message = Line::from(vec![
-        Span::styled("Status: ", theme.muted()),
+    let auth_line = Line::from(vec![
+        Span::styled("Auth  ", theme.muted()),
+        Span::styled("t", kh), Span::styled(" bearer  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" a", kh), Span::styled(" basic  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" k", kh), Span::styled(" api-key  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled("Edit  ", theme.muted()),
+        Span::styled("i", kh), Span::styled(" name  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" u", kh), Span::styled(" url  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" m", kh), Span::styled(" method  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" b", kh), Span::styled(" body  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" T", kh), Span::styled(" timeout  ", theme.muted()),
+        Span::styled("│", sep),
+        Span::styled(" e", kh), Span::styled(" env", theme.muted()),
+    ]);
+
+    let status_icon_style = if state.last_error.is_some() {
+        Style::default().fg(theme.error_color)
+    } else {
+        Style::default().fg(theme.success)
+    };
+
+    let status_line = Line::from(vec![
+        Span::styled("● ", status_icon_style),
         Span::styled(state.status_line.clone(), theme.body()),
     ]);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Controls ")
-        .style(Style::default().bg(theme.panel_bg));
-
-    let paragraph = Paragraph::new(vec![help, message])
-        .block(block)
-        .wrap(Wrap { trim: true });
-    frame.render_widget(paragraph, area);
+    frame.render_widget(
+        Paragraph::new(vec![nav_line, auth_line, status_line])
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.border))
+                    .style(Style::default().bg(theme.panel_bg)),
+            )
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
+// ─── Overlays ────────────────────────────────────────────────────────────────
+
 fn render_input_overlay(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: &Theme) {
-    let popup = centered_rect(72, 26, area);
+    let popup = centered_rect(72, 22, area);
     let title = format!(" {} ", state.input_mode.prompt());
 
     let content = vec![
         Line::from(Span::styled(
-            "Type input and press Enter to apply",
+            "Type and press Enter to confirm  ·  Esc to cancel",
             theme.muted(),
         )),
-        Line::from(Span::styled("Esc cancels", theme.muted())),
         Line::from(""),
-        Line::from(Span::styled(state.input_buffer.clone(), theme.body())),
+        Line::from(vec![
+            Span::styled("› ", theme.key_hint()),
+            Span::styled(state.input_buffer.clone(), theme.body()),
+            Span::styled("█", Style::default().fg(theme.primary)),
+        ]),
     ];
 
     frame.render_widget(Clear, popup);
-    let dialog = Paragraph::new(content)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .style(Style::default().bg(theme.panel_bg)),
-        )
-        .wrap(Wrap { trim: true });
-
-    frame.render_widget(dialog, popup);
+    frame.render_widget(
+        Paragraph::new(content)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.primary))
+                    .title(title)
+                    .title_style(
+                        Style::default()
+                            .fg(theme.primary)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .style(Style::default().bg(theme.panel_bg)),
+            )
+            .wrap(Wrap { trim: true }),
+        popup,
+    );
 }
 
 fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-    let popup = centered_rect(76, 62, area);
+    let popup = centered_rect(78, 82, area);
+    let kh = theme.key_hint();
 
     let content = vec![
-        Line::from(Span::styled("Navigation", theme.title())),
-        Line::from(Span::styled("Arrows: move collections and requests", theme.body())),
-        Line::from(Span::styled("/: live filter requests", theme.body())),
+        Line::from(vec![
+            Span::styled("  YORU Help  ", Style::default().fg(theme.primary).add_modifier(Modifier::BOLD)),
+            Span::styled("                            Press  Esc  or  ?  to close", theme.muted()),
+        ]),
+        Line::from(Span::styled("─".repeat(70), Style::default().fg(theme.border))),
         Line::from(""),
-        Line::from(Span::styled("Request Actions", theme.title())),
-        Line::from(Span::styled("r or Enter: run request", theme.body())),
-        Line::from(Span::styled("n: new quick request", theme.body())),
-        Line::from(Span::styled("d: duplicate request", theme.body())),
-        Line::from(Span::styled("x: delete request", theme.body())),
-        Line::from(Span::styled("m: cycle method", theme.body())),
-        Line::from(Span::styled("i: edit request name", theme.body())),
-        Line::from(Span::styled("u: edit URL", theme.body())),
-        Line::from(Span::styled("h: add header", theme.body())),
-        Line::from(Span::styled("p: add query", theme.body())),
-        Line::from(Span::styled("b: edit raw body", theme.body())),
-        Line::from(Span::styled("t: set bearer token", theme.body())),
-        Line::from(Span::styled("e: switch environment", theme.body())),
+        Line::from(Span::styled("  Navigation", theme.title())),
+        Line::from(vec![Span::styled("  ↑ / ↓ ", kh), Span::styled("  move between requests", theme.muted())]),
+        Line::from(vec![Span::styled("  ← / → ", kh), Span::styled("  switch collection", theme.muted())]),
+        Line::from(vec![Span::styled("  /     ", kh), Span::styled("  live-filter requests (type to search)", theme.muted())]),
         Line::from(""),
-        Line::from(Span::styled("Response Tabs", theme.title())),
-        Line::from(Span::styled("1 body, 2 headers, 3 logs, 4 history", theme.body())),
-        Line::from(Span::styled("Tab: next response tab", theme.body())),
+        Line::from(Span::styled("  Request Actions", theme.title())),
+        Line::from(vec![Span::styled("  r  Enter ", kh), Span::styled("  run selected request", theme.muted())]),
+        Line::from(vec![Span::styled("  n        ", kh), Span::styled("  add quick request to current collection", theme.muted())]),
+        Line::from(vec![Span::styled("  d        ", kh), Span::styled("  duplicate selected request", theme.muted())]),
+        Line::from(vec![Span::styled("  x        ", kh), Span::styled("  delete selected request", theme.muted())]),
+        Line::from(vec![Span::styled("  m        ", kh), Span::styled("  cycle HTTP method  GET→POST→PUT→PATCH→DELETE…", theme.muted())]),
         Line::from(""),
-        Line::from(Span::styled("Other", theme.title())),
-        Line::from(Span::styled("c: clear error, ?: toggle help, q: quit", theme.body())),
+        Line::from(Span::styled("  Request Editing", theme.title())),
+        Line::from(vec![Span::styled("  i        ", kh), Span::styled("  edit request name", theme.muted())]),
+        Line::from(vec![Span::styled("  u        ", kh), Span::styled("  edit URL", theme.muted())]),
+        Line::from(vec![Span::styled("  h        ", kh), Span::styled("  add header  Key:Value", theme.muted())]),
+        Line::from(vec![Span::styled("  p        ", kh), Span::styled("  add query param  key=value", theme.muted())]),
+        Line::from(vec![Span::styled("  b        ", kh), Span::styled("  edit raw request body", theme.muted())]),
+        Line::from(vec![Span::styled("  T        ", kh), Span::styled("  set timeout in ms  (empty = default)", theme.muted())]),
+        Line::from(""),
+        Line::from(Span::styled("  Authentication", theme.title())),
+        Line::from(vec![Span::styled("  t        ", kh), Span::styled("  set bearer token  (empty clears)", theme.muted())]),
+        Line::from(vec![Span::styled("  a        ", kh), Span::styled("  set basic auth  username:password", theme.muted())]),
+        Line::from(vec![Span::styled("  k        ", kh), Span::styled("  set API key  name:value  or  name:value:h/q", theme.muted())]),
+        Line::from(""),
+        Line::from(Span::styled("  Collections", theme.title())),
+        Line::from(vec![Span::styled("  N        ", kh), Span::styled("  create new collection", theme.muted())]),
+        Line::from(vec![Span::styled("  C        ", kh), Span::styled("  rename current collection", theme.muted())]),
+        Line::from(""),
+        Line::from(Span::styled("  Response", theme.title())),
+        Line::from(vec![Span::styled("  1 2 3 4  ", kh), Span::styled("  switch tab  Body / Headers / Logs / History", theme.muted())]),
+        Line::from(vec![Span::styled("  Tab      ", kh), Span::styled("  cycle response tabs", theme.muted())]),
+        Line::from(vec![Span::styled("  PgUp/Dn  ", kh), Span::styled("  scroll response body up / down", theme.muted())]),
+        Line::from(""),
+        Line::from(Span::styled("  Other", theme.title())),
+        Line::from(vec![Span::styled("  e        ", kh), Span::styled("  cycle active environment", theme.muted())]),
+        Line::from(vec![Span::styled("  c        ", kh), Span::styled("  clear error banner", theme.muted())]),
+        Line::from(vec![Span::styled("  ?        ", kh), Span::styled("  toggle this help  (Esc also closes)", theme.muted())]),
+        Line::from(vec![Span::styled("  q        ", kh), Span::styled("  quit", theme.muted())]),
     ];
 
     frame.render_widget(Clear, popup);
-    let dialog = Paragraph::new(content)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Help ")
-                .style(Style::default().bg(theme.panel_bg)),
-        )
-        .wrap(Wrap { trim: true });
-
-    frame.render_widget(dialog, popup);
+    frame.render_widget(
+        Paragraph::new(content)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.primary))
+                    .title(" Help ")
+                    .title_style(
+                        Style::default()
+                            .fg(theme.primary)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .style(Style::default().bg(theme.panel_bg)),
+            )
+            .wrap(Wrap { trim: true }),
+        popup,
+    );
 }
 
 fn render_error_overlay(frame: &mut Frame<'_>, area: Rect, error: &str, theme: &Theme) {
     let popup = centered_rect(72, 30, area);
 
     let content = vec![
-        Line::from(Span::styled("Last Error", Style::default().fg(theme.warning))),
+        Line::from(Span::styled(
+            "  Request Error",
+            Style::default()
+                .fg(theme.error_color)
+                .add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
         Line::from(Span::styled(error.to_string(), theme.body())),
         Line::from(""),
-        Line::from(Span::styled("Press c to clear", theme.muted())),
+        Line::from(Span::styled(
+            "  Press  c  or  Esc  to dismiss",
+            theme.muted(),
+        )),
     ];
 
     frame.render_widget(Clear, popup);
-    let dialog = Paragraph::new(content)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Error ")
-                .style(Style::default().bg(theme.panel_bg)),
-        )
-        .wrap(Wrap { trim: true });
-
-    frame.render_widget(dialog, popup);
+    frame.render_widget(
+        Paragraph::new(content)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.error_color))
+                    .title(" Error ")
+                    .title_style(
+                        Style::default()
+                            .fg(theme.error_color)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .style(Style::default().bg(theme.panel_bg)),
+            )
+            .wrap(Wrap { trim: true }),
+        popup,
+    );
 }
 
+// ─── Utilities ───────────────────────────────────────────────────────────────
+
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let layout = Layout::default()
+    let vert = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Percentage((100 - percent_y) / 2),
@@ -498,19 +914,21 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage(percent_x),
             Constraint::Percentage((100 - percent_x) / 2),
         ])
-        .split(layout[1])[1]
+        .split(vert[1])[1]
 }
 
-fn auth_label(request: &crate::core::models::RequestTemplate) -> String {
-    match &request.auth {
-        crate::core::models::AuthStrategy::None => "None".to_string(),
-        crate::core::models::AuthStrategy::Basic { .. } => "Basic".to_string(),
-        crate::core::models::AuthStrategy::Bearer { .. } => "Bearer".to_string(),
-        crate::core::models::AuthStrategy::ApiKey { in_header, .. } => {
+fn auth_label(req: &crate::core::models::RequestTemplate) -> String {
+    match &req.auth {
+        crate::core::models::AuthStrategy::None => "none".to_string(),
+        crate::core::models::AuthStrategy::Basic { username, .. } => {
+            format!("basic ({})", username)
+        }
+        crate::core::models::AuthStrategy::Bearer { .. } => "bearer".to_string(),
+        crate::core::models::AuthStrategy::ApiKey { key, in_header, .. } => {
             if *in_header {
-                "API Key (header)".to_string()
+                format!("api-key header ({})", key)
             } else {
-                "API Key (query)".to_string()
+                format!("api-key query ({})", key)
             }
         }
     }
