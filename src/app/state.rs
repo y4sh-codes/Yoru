@@ -3,15 +3,39 @@
 //! Doctag:app-state
 
 use crate::core::models::{ExecutedResponse, RequestTemplate, Workspace};
+use crate::storage::fs_store::WorkspaceEntry;
 
-/// Top-level screen selector.
+// ─── Screens ─────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Screen {
+    /// Workspace picker shown on launch.
     Splash,
+    /// Main request editor.
     Main,
 }
 
-/// Input mode used by inline TUI editors.
+// ─── Splash-specific input ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SplashInputMode {
+    None,
+    NewWorkspace,
+    RenameWorkspace,
+}
+
+impl SplashInputMode {
+    pub fn prompt(self) -> &'static str {
+        match self {
+            Self::None            => "",
+            Self::NewWorkspace    => "New workspace name",
+            Self::RenameWorkspace => "Rename workspace",
+        }
+    }
+}
+
+// ─── Main-screen input ────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputMode {
     None,
@@ -30,27 +54,27 @@ pub enum InputMode {
 }
 
 impl InputMode {
-    /// Human-readable prompt for each mode.
     pub fn prompt(self) -> &'static str {
         match self {
-            Self::None              => "",
-            Self::Search            => "Filter requests",
-            Self::EditRequestName   => "Edit request name",
-            Self::EditUrl           => "Edit URL",
-            Self::AddHeader         => "Add header  Key:Value",
-            Self::AddQuery          => "Add query param  key=value",
-            Self::EditBody          => "Edit raw body",
-            Self::SetBearer         => "Set bearer token  (empty clears auth)",
-            Self::SetBasicAuth      => "Set basic auth  username:password  (empty clears auth)",
-            Self::SetApiKey         => "Set API key  name:value  or  name:value:h  /  name:value:q",
-            Self::SetTimeout        => "Set timeout in ms  (empty = use default)",
+            Self::None               => "",
+            Self::Search             => "Filter requests",
+            Self::EditRequestName    => "Edit request name",
+            Self::EditUrl            => "Edit URL",
+            Self::AddHeader          => "Add header  Key:Value",
+            Self::AddQuery           => "Add query param  key=value",
+            Self::EditBody           => "Edit raw body",
+            Self::SetBearer          => "Set bearer token  (empty clears auth)",
+            Self::SetBasicAuth       => "Set basic auth  username:password  (empty clears auth)",
+            Self::SetApiKey          => "Set API key  name:value  or  name:value:h/q",
+            Self::SetTimeout         => "Set timeout in ms  (empty = default)",
             Self::EditCollectionName => "Rename collection",
-            Self::NewCollection     => "New collection name",
+            Self::NewCollection      => "New collection name",
         }
     }
 }
 
-/// Tabs used in the response panel.
+// ─── Response tabs ────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResponseTab {
     Body,
@@ -70,11 +94,32 @@ impl ResponseTab {
     }
 }
 
-/// Top-level state shared across UI render and actions.
+// ─── Confirm dialog ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfirmAction {
+    DeleteWorkspace(String), // slug
+}
+
+// ─── AppState ─────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone)]
 pub struct AppState {
+    // ── Active workspace ─────────────────────────────────────────────────────
     pub workspace: Workspace,
+    pub active_slug: String,
+
+    // ── Screen ───────────────────────────────────────────────────────────────
     pub screen: Screen,
+
+    // ── Splash state ─────────────────────────────────────────────────────────
+    pub available_workspaces: Vec<WorkspaceEntry>,
+    pub splash_selected_idx: usize,
+    pub splash_input_mode: SplashInputMode,
+    pub splash_input_buffer: String,
+    pub splash_confirm: Option<ConfirmAction>,
+
+    // ── Main UI state ─────────────────────────────────────────────────────────
     pub selected_collection_idx: usize,
     pub selected_request_idx: usize,
     pub status_line: String,
@@ -90,12 +135,27 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(mut workspace: Workspace) -> Self {
-        workspace.ensure_seed_data();
+    /// Creates the initial state with a workspace list and active workspace.
+    pub fn new(
+        workspace: Workspace,
+        slug: String,
+        available_workspaces: Vec<WorkspaceEntry>,
+    ) -> Self {
+        // Find the index in the list that matches our active slug
+        let splash_selected_idx = available_workspaces
+            .iter()
+            .position(|e| e.slug == slug)
+            .unwrap_or(0);
 
         Self {
             workspace,
+            active_slug: slug,
             screen: Screen::Splash,
+            available_workspaces,
+            splash_selected_idx,
+            splash_input_mode: SplashInputMode::None,
+            splash_input_buffer: String::new(),
+            splash_confirm: None,
             selected_collection_idx: 0,
             selected_request_idx: 0,
             status_line: "Ready".to_string(),
@@ -110,6 +170,41 @@ impl AppState {
             should_quit: false,
         }
     }
+
+    // ── Splash helpers ────────────────────────────────────────────────────────
+
+    pub fn splash_selected_entry(&self) -> Option<&WorkspaceEntry> {
+        self.available_workspaces.get(self.splash_selected_idx)
+    }
+
+    pub fn splash_next(&mut self) {
+        if !self.available_workspaces.is_empty() {
+            self.splash_selected_idx =
+                (self.splash_selected_idx + 1) % self.available_workspaces.len();
+        }
+    }
+
+    pub fn splash_prev(&mut self) {
+        if !self.available_workspaces.is_empty() {
+            self.splash_selected_idx = if self.splash_selected_idx == 0 {
+                self.available_workspaces.len() - 1
+            } else {
+                self.splash_selected_idx - 1
+            };
+        }
+    }
+
+    pub fn begin_splash_input(&mut self, mode: SplashInputMode, initial: impl Into<String>) {
+        self.splash_input_mode = mode;
+        self.splash_input_buffer = initial.into();
+    }
+
+    pub fn end_splash_input(&mut self) {
+        self.splash_input_mode = SplashInputMode::None;
+        self.splash_input_buffer.clear();
+    }
+
+    // ── Main screen helpers ───────────────────────────────────────────────────
 
     pub fn selected_collection(&self) -> Option<&crate::core::models::Collection> {
         self.workspace.collections.get(self.selected_collection_idx)
@@ -142,19 +237,19 @@ impl AppState {
             .iter()
             .enumerate()
             .filter_map(|(idx, req)| {
-                let haystack = format!("{} {} {}", req.name, req.url, req.method)
-                    .to_ascii_lowercase();
+                let haystack =
+                    format!("{} {} {}", req.name, req.url, req.method).to_ascii_lowercase();
                 if haystack.contains(&needle) { Some(idx) } else { None }
             })
             .collect()
     }
 
     pub fn normalize_selection(&mut self) {
-        if let Some(collection) = self.selected_collection() {
-            if collection.requests.is_empty() {
+        if let Some(col) = self.selected_collection() {
+            if col.requests.is_empty() {
                 self.selected_request_idx = 0;
-            } else if self.selected_request_idx >= collection.requests.len() {
-                self.selected_request_idx = collection.requests.len() - 1;
+            } else if self.selected_request_idx >= col.requests.len() {
+                self.selected_request_idx = col.requests.len() - 1;
             }
         } else {
             self.selected_collection_idx = 0;

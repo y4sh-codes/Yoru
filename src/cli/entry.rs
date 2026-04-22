@@ -11,7 +11,7 @@ use crate::core::models::{
 };
 use crate::http::client::build_http_client;
 use crate::http::executor::HttpExecutor;
-use crate::storage::fs_store::{FsWorkspaceStore, WorkspaceStore};
+use crate::storage::fs_store::{FsWorkspaceStore, WorkspaceRegistry, WorkspaceStore};
 use crate::tui::run_tui;
 use crate::util::logging::init_logging;
 use crate::{YoruError, YoruResult};
@@ -25,21 +25,28 @@ pub async fn run() -> color_eyre::Result<()> {
 
     match cli.command.unwrap_or(Command::Tui) {
         Command::Tui => {
-            let workspace = store.load_workspace()?;
-            let app_state = AppState::new(workspace);
-            let executor = HttpExecutor::new(build_http_client()?);
+            // Load workspace list for splash picker
+            let workspaces = store.list_workspaces()?;
+            let workspace  = store.load_workspace()?;
+            let active_slug = store.get_active_slug()?.unwrap_or_else(|| "default".to_string());
+            let app_state  = AppState::new(workspace, active_slug, workspaces);
+            let executor   = HttpExecutor::new(build_http_client()?);
             run_tui(app_state, executor, &store).await?;
         }
         Command::Init { name } => {
             let mut workspace = crate::core::models::Workspace::sample();
             if let Some(name) = name {
-                workspace.name = name;
+                workspace.name = name.clone();
+                let (_, slug) = store.create_workspace(&workspace.name)?;
+                store.save_workspace_with_slug(&workspace, &slug)?;
+                println!("Initialized workspace '{}' (slug: {})", workspace.name, slug);
+            } else {
+                store.save_workspace(&workspace)?;
+                println!(
+                    "Initialized workspace at {}",
+                    store.workspaces_dir().display()
+                );
             }
-            store.save_workspace(&workspace)?;
-            println!(
-                "Initialized workspace at {}",
-                store.workspace_file().display()
-            );
         }
         Command::Import { file } => {
             let workspace = store.import_workspace(&file)?;
@@ -74,16 +81,18 @@ async fn execute_send_command(args: SendArgs) -> YoruResult<()> {
     request.headers = args
         .headers
         .iter()
-        .map(|header| parse_header(header))
+        .map(|h| parse_header(h))
         .collect::<YoruResult<Vec<_>>>()?;
+
     request.query = args
         .query
         .iter()
-        .map(|item| parse_key_value(item))
+        .map(|q| parse_key_value(q))
         .collect::<YoruResult<Vec<_>>>()?;
-    request.timeout_ms = args.timeout_ms;
+
+    request.timeout_ms     = args.timeout_ms;
     request.pre_request_script = args.pre_script;
-    request.test_script = args.test_script;
+    request.test_script    = args.test_script;
 
     if let Some(json_payload) = args.json {
         let value = serde_json::from_str::<serde_json::Value>(&json_payload)
@@ -141,7 +150,7 @@ async fn execute_send_command(args: SendArgs) -> YoruResult<()> {
     println!("Size: {} bytes", response.size_bytes);
     println!();
     println!("Headers:");
-    for (name, value) in response.headers {
+    for (name, value) in &response.headers {
         println!("  {name}: {value}");
     }
     println!();
@@ -151,7 +160,7 @@ async fn execute_send_command(args: SendArgs) -> YoruResult<()> {
     if !response.script_logs.is_empty() {
         println!();
         println!("Script Logs:");
-        for line in response.script_logs {
+        for line in &response.script_logs {
             println!("  - {line}");
         }
     }
@@ -165,12 +174,7 @@ fn parse_header(input: &str) -> YoruResult<KeyValue> {
             "invalid header '{input}', expected Key:Value"
         )));
     };
-
-    Ok(KeyValue {
-        key: key.trim().to_string(),
-        value: value.trim().to_string(),
-        enabled: true,
-    })
+    Ok(KeyValue { key: key.trim().to_string(), value: value.trim().to_string(), enabled: true })
 }
 
 fn parse_key_value(input: &str) -> YoruResult<KeyValue> {
@@ -179,10 +183,5 @@ fn parse_key_value(input: &str) -> YoruResult<KeyValue> {
             "invalid key-value '{input}', expected key=value"
         )));
     };
-
-    Ok(KeyValue {
-        key: key.trim().to_string(),
-        value: value.trim().to_string(),
-        enabled: true,
-    })
+    Ok(KeyValue { key: key.trim().to_string(), value: value.trim().to_string(), enabled: true })
 }
