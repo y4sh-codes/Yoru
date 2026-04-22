@@ -18,7 +18,7 @@ export const TopBar = () => {
             Docs
           </Link>
           <a
-            href="https://github.com"
+            href="https://github.com/y4sh-codes/Yoru"
             target="_blank"
             rel="noreferrer"
             className="text-muted-foreground hover:text-foreground transition-colors"
