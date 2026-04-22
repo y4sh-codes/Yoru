@@ -384,6 +384,7 @@ fn render_splash_input_overlay(
     let popup = centered_rect(60, 20, area);
     let title = format!(" {} ", state.splash_input_mode.prompt());
 
+    // Cursor is always at end for splash inputs (no mid-text cursor tracking there)
     let content = vec![
         Line::from(Span::styled(
             "Type and press Enter to confirm  ·  Esc to cancel",
@@ -896,18 +897,35 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: &Th
 
 fn render_input_overlay(frame: &mut Frame<'_>, area: Rect, state: &AppState, theme: &Theme) {
     let popup = centered_rect(72, 22, area);
-    let title = format!(" {} ", state.input_mode.prompt());
+
+    // Split the buffer at the cursor so we can render cursor visually
+    let cursor = state.input_cursor.min(state.input_buffer.len());
+    let before = &state.input_buffer[..cursor];
+    let after  = &state.input_buffer[cursor..];
+
+    // Build title — for body mode show the current type + toggle hint
+    let title = if state.input_mode == crate::app::state::InputMode::EditBody {
+        let mode_badge = if state.body_is_json { "JSON" } else { "Raw" };
+        format!(" Edit body  [{}]  Tab to toggle ", mode_badge)
+    } else {
+        format!(" {} ", state.input_mode.prompt())
+    };
+
+    // Hint line
+    let hint = if state.input_mode == crate::app::state::InputMode::EditBody {
+        "Enter to confirm  ·  Tab to toggle Raw/JSON  ·  Esc to cancel"
+    } else {
+        "Type and press Enter to confirm  ·  Esc to cancel"
+    };
 
     let content = vec![
-        Line::from(Span::styled(
-            "Type and press Enter to confirm  ·  Esc to cancel",
-            theme.muted(),
-        )),
+        Line::from(Span::styled(hint, theme.muted())),
         Line::from(""),
         Line::from(vec![
             Span::styled("› ", theme.key_hint()),
-            Span::styled(state.input_buffer.clone(), theme.body()),
+            Span::styled(before.to_string(), theme.body()),
             Span::styled("█", Style::default().fg(theme.primary)),
+            Span::styled(after.to_string(), theme.body()),
         ]),
     ];
 

@@ -16,7 +16,8 @@ use crate::app::actions::{
     add_request_header, add_request_query, cycle_environment, cycle_selected_method,
     delete_selected_request, duplicate_selected_request, new_collection, rename_collection,
     run_selected_request, set_api_key, set_basic_auth, set_request_bearer,
-    set_request_name, set_request_raw_body, set_request_timeout, set_request_url,
+    set_request_json_body, set_request_name, set_request_raw_body, set_request_timeout,
+    set_request_url,
 };
 use crate::app::state::{
     AppState, ConfirmAction, InputMode, ResponseTab, Screen, SplashInputMode,
@@ -313,11 +314,12 @@ async fn handle_main_key(
         KeyCode::Char('h') => state.begin_input(InputMode::AddHeader, ""),
         KeyCode::Char('p') => state.begin_input(InputMode::AddQuery, ""),
         KeyCode::Char('b') => {
-            let initial = match state.selected_request().map(|r| &r.body) {
-                Some(RequestBody::Raw { content, .. }) => content.clone(),
-                Some(RequestBody::Json { value })      => value.to_string(),
-                _                                       => String::new(),
+            let (initial, is_json) = match state.selected_request().map(|r| &r.body) {
+                Some(RequestBody::Json { value })      => (value.to_string(), true),
+                Some(RequestBody::Raw { content, .. }) => (content.clone(), false),
+                _                                       => (String::new(), state.body_is_json),
             };
+            state.body_is_json = is_json;
             state.begin_input(InputMode::EditBody, initial);
         }
         KeyCode::Char('T') => {
@@ -386,16 +388,24 @@ fn handle_inline_input_key(
             state.end_input();
             state.status_line = "Cancelled".to_string();
         }
-        KeyCode::Enter    => commit_inline_input(state, store)?,
+        KeyCode::Enter => commit_inline_input(state, store)?,
         KeyCode::Backspace => {
-            state.input_buffer.pop();
+            state.input_backspace();
             if state.input_mode == InputMode::Search {
                 state.request_filter = state.input_buffer.clone();
                 align_filtered_selection(state);
             }
         }
+        KeyCode::Left  => { state.input_move_left(); }
+        KeyCode::Right => { state.input_move_right(); }
+        // Tab in body edit mode toggles Raw <-> JSON
+        KeyCode::Tab if state.input_mode == InputMode::EditBody => {
+            state.body_is_json = !state.body_is_json;
+            let mode_name = if state.body_is_json { "JSON" } else { "Raw" };
+            state.status_line = format!("Body mode: {} — Enter to confirm, Esc to cancel", mode_name);
+        }
         KeyCode::Char(ch) => {
-            state.input_buffer.push(ch);
+            state.input_insert(ch);
             if state.input_mode == InputMode::Search {
                 state.request_filter = state.input_buffer.clone();
                 align_filtered_selection(state);
@@ -423,7 +433,13 @@ fn commit_inline_input(state: &mut AppState, store: &FsWorkspaceStore) -> YoruRe
         InputMode::EditUrl            => set_request_url(state, value, store)?,
         InputMode::AddHeader          => add_request_header(state, value, store)?,
         InputMode::AddQuery           => add_request_query(state, value, store)?,
-        InputMode::EditBody           => set_request_raw_body(state, value, store)?,
+        InputMode::EditBody           => {
+            if state.body_is_json {
+                set_request_json_body(state, value, store)?;
+            } else {
+                set_request_raw_body(state, value, store)?;
+            }
+        }
         InputMode::SetBearer          => set_request_bearer(state, value, store)?,
         InputMode::SetBasicAuth       => set_basic_auth(state, value, store)?,
         InputMode::SetApiKey          => set_api_key(state, value, store)?,

@@ -62,7 +62,7 @@ impl InputMode {
             Self::EditUrl            => "Edit URL",
             Self::AddHeader          => "Add header  Key:Value",
             Self::AddQuery           => "Add query param  key=value",
-            Self::EditBody           => "Edit raw body",
+            Self::EditBody           => "Edit body  (Tab to toggle Raw/JSON)",
             Self::SetBearer          => "Set bearer token  (empty clears auth)",
             Self::SetBasicAuth       => "Set basic auth  username:password  (empty clears auth)",
             Self::SetApiKey          => "Set API key  name:value  or  name:value:h/q",
@@ -127,6 +127,8 @@ pub struct AppState {
     pub last_response: Option<ExecutedResponse>,
     pub input_mode: InputMode,
     pub input_buffer: String,
+    pub input_cursor: usize,   // byte-index cursor for left/right navigation
+    pub body_is_json: bool,    // toggle: true = Json body, false = Raw body
     pub request_filter: String,
     pub response_tab: ResponseTab,
     pub response_scroll: u16,
@@ -163,6 +165,8 @@ impl AppState {
             last_response: None,
             input_mode: InputMode::None,
             input_buffer: String::new(),
+            input_cursor: 0,
+            body_is_json: true,
             request_filter: String::new(),
             response_tab: ResponseTab::Body,
             response_scroll: 0,
@@ -296,11 +300,54 @@ impl AppState {
     pub fn begin_input(&mut self, mode: InputMode, initial: impl Into<String>) {
         self.input_mode = mode;
         self.input_buffer = initial.into();
+        self.input_cursor = self.input_buffer.len();
         self.status_line = format!("{}: Enter to confirm, Esc to cancel", mode.prompt());
     }
 
     pub fn end_input(&mut self) {
         self.input_mode = InputMode::None;
         self.input_buffer.clear();
+        self.input_cursor = 0;
+    }
+
+    /// Insert a char at the cursor position.
+    pub fn input_insert(&mut self, ch: char) {
+        self.input_buffer.insert(self.input_cursor, ch);
+        self.input_cursor += ch.len_utf8();
+        if self.input_cursor > self.input_buffer.len() {
+            self.input_cursor = self.input_buffer.len();
+        }
+    }
+
+    /// Delete char before cursor (backspace).
+    pub fn input_backspace(&mut self) {
+        if self.input_cursor == 0 { return; }
+        // Find the previous character boundary
+        let mut prev = self.input_cursor - 1;
+        while prev > 0 && !self.input_buffer.is_char_boundary(prev) {
+            prev -= 1;
+        }
+        self.input_buffer.drain(prev..self.input_cursor);
+        self.input_cursor = prev;
+    }
+
+    /// Move cursor left by one char.
+    pub fn input_move_left(&mut self) {
+        if self.input_cursor == 0 { return; }
+        let mut pos = self.input_cursor - 1;
+        while pos > 0 && !self.input_buffer.is_char_boundary(pos) {
+            pos -= 1;
+        }
+        self.input_cursor = pos;
+    }
+
+    /// Move cursor right by one char.
+    pub fn input_move_right(&mut self) {
+        if self.input_cursor >= self.input_buffer.len() { return; }
+        let mut pos = self.input_cursor + 1;
+        while pos < self.input_buffer.len() && !self.input_buffer.is_char_boundary(pos) {
+            pos += 1;
+        }
+        self.input_cursor = pos;
     }
 }

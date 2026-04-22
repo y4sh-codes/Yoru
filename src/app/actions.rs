@@ -250,10 +250,35 @@ pub fn set_request_raw_body<S: WorkspaceStore>(
         state.status_line = "Body cleared".to_string();
     } else {
         req.body = RequestBody::Raw {
-            mime_type: "application/json".to_string(),
+            mime_type: "text/plain".to_string(),
             content: body,
         };
-        state.status_line = "Body updated".to_string();
+        state.status_line = "Body updated (raw)".to_string();
+    }
+    state.workspace.updated_at = Utc::now();
+    store.save_workspace(&state.workspace)?;
+    Ok(())
+}
+
+/// Sets a JSON body on the selected request. Parses the string into a
+/// `serde_json::Value`; falls back to storing it as a JSON string literal
+/// if the input is not valid JSON so the user never loses their work.
+pub fn set_request_json_body<S: WorkspaceStore>(
+    state: &mut AppState,
+    body: String,
+    store: &S,
+) -> YoruResult<()> {
+    let req = state
+        .selected_request_mut()
+        .ok_or_else(|| YoruError::Runtime("no request selected".to_string()))?;
+    if body.trim().is_empty() {
+        req.body = RequestBody::None;
+        state.status_line = "Body cleared".to_string();
+    } else {
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .map_err(|e| YoruError::Validation(format!("Invalid JSON: {e}")))?;
+        req.body = RequestBody::Json { value };
+        state.status_line = "Body updated (JSON)".to_string();
     }
     state.workspace.updated_at = Utc::now();
     store.save_workspace(&state.workspace)?;
