@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Yoru — Vercel Ship inspired design system. All colors HSL. */
+
+@layer base {
+  :root {
+    /* Pure black canvas, near-white type, soft greys for mono captions */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 4%;
+
+    --secondary: 0 0% 9%;
+    --secondary-foreground: 0 0% 92%;
+
+    --muted: 0 0% 8%;
+    --muted-foreground: 0 0% 55%;
+
+    --accent: 22 100% 55%; /* Rust orange — Yoru's identity */
+    --accent-foreground: 0 0% 4%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 14%;
+    --input: 0 0% 14%;
+    --ring: 0 0% 98%;
+
+    --radius: 0.25rem;
+
+    /* Letter fragment off-white */
+    --letter: 0 0% 90%;
+    --caption: 0 0% 60%;
+    --hairline: 0 0% 18%;
+
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 0 0% 70%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 8%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 14%;
+    --sidebar-ring: 0 0% 98%;
+  }
+
+  .dark {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 9%;
+    --secondary-foreground: 0 0% 92%;
+    --muted: 0 0% 8%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 22 100% 55%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14%;
+    --input: 0 0% 14%;
+    --ring: 0 0% 98%;
+    --letter: 0 0% 90%;
+    --caption: 0 0% 60%;
+    --hairline: 0 0% 18%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html, body, #root {
+    @apply bg-background text-foreground;
+    min-height: 100%;
+  }
+  body {
+    font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    -webkit-font-smoothing: antialiased;
+    background: hsl(var(--background));
+  }
+}
+
+@layer utilities {
+  .font-mono-ui {
+    font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: 0.02em;
+  }
+  .font-display {
+    font-family: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+  }
+  .text-caption {
+    color: hsl(var(--caption));
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .hairline-top { border-top: 1px solid hsl(var(--hairline)); }
+  .hairline-b { border-bottom: 1px solid hsl(var(--hairline)); }
+  .dashed-frame {
+    border: 1px dashed hsl(var(--hairline));
+  }
+
+  /* Big letter fragments — only a slice of the letter is visible */
+  .letter-fragment {
+    color: hsl(var(--letter));
+    font-family: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.06em;
+    line-height: 0.78;
+    /* Smaller floor so YORU fits at 670px wide */
+    font-size: clamp(96px, 22vw, 460px);
+    user-select: none;
+    cursor: default;
+    display: inline-block;
+    position: relative;
+  }
+  .letter-fragment > span {
+    display: inline-block;
+    line-height: 0.78;
+  }
+
+  .scroll-fade {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 800ms ease, transform 800ms ease;
+  }
+  .scroll-fade.in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Geist via fontsource-style CDN fallback. We rely on system fallbacks if missing. */
+@font-face {
+  font-family: 'Geist';
+  src: local('Geist'), local('Inter');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: local('Geist Mono'), local('SF Mono'), local('Menlo');
+  font-display: swap;
+}
