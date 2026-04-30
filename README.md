@@ -10,7 +10,7 @@
 
 ![Yoru homescreen](assets/Screenshot%20from%202026-04-22%2007-27-29.png)
 
-Yoru is a full-featured, keyboard-driven HTTP API client that lives entirely in your terminal. It brings the core power of Postman — collections, environments, auth, body editing, history, scripting — to developers who live in the shell.
+Yoru is a full-featured, keyboard-driven HTTP API client that lives entirely in your terminal. It brings the core power of Postman — collections, auth, environments, body editing, history, scripting — to developers who live in the shell.
 
 ## Features
 
